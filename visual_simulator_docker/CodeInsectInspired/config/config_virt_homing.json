@@ -1,0 +1,25 @@
+{
+    "map": "/isaac-sim/CodeInsectInspired/maps/forest_6_trees_20x20_area_0.usd",
+    "model": "/isaac-sim/CodeInsectInspired/model_37.pth",
+    "params": {
+        "step_size": 0.5,
+        "count_limit": 50,
+        "threshold": 1.2
+    },
+    "start_location_pattern": "circle",
+    "square_params": {
+        "side_length": 10,
+        "num_points": 16
+    },
+    "circle_params": {
+        "radius_scales": [0.5, 1.0, 1.5, 2.0, 2.5],
+        "radius": 10,
+        "num_points": 16
+    },
+    "virtual_home_point": [0.0, 0.0, 1.5],
+    "pitch_roll": 0,
+    "add_block_in_place_mode": false,
+    "north": false,
+    "fixed_yaw": false,
+    "save_images": false
+}

@@ -1,0 +1,17 @@
+{
+  "model_suffix": "",
+  "epochs": 150,
+  "batch_size": 8,
+  "batch_size_val": 8,
+  "batch_size_eval": 8,
+  "learning_rate": 0.0005,
+  "dataset_folder": "/isaac-sim/CodeInsectInspired/forest/forest_6_trees_home_circle_1000/",
+  "image_folder": "/isaac-sim/CodeInsectInspired/forest/forest_6_trees_home_circle_1000/Replicator/rgb/",
+  "csv_filename": "dataset_navigation.csv",
+  "split_ratio": 0.95,
+  "augment": true,
+  "evaluation_dataset_folder": "/isaac-sim/CodeInsectInspired/forest/forest_6_trees_grid/",
+  "evaluation_image_folder": "/isaac-sim/CodeInsectInspired/forest/forest_6_trees_grid/Replicator/rgb/",
+  "evaluation_csv_filename": "dataset_navigation.csv",
+  "model_type": "simple"
+}

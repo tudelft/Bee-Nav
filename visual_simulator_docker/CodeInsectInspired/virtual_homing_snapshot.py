@@ -1,0 +1,904 @@
+# Determine the catchment area of a central snapshot
+from omni.isaac.kit import SimulationApp
+import omni
+import json
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+from omni.isaac.kit import SimulationApp
+from PIL import Image
+from insect_utils.flight_path_functions import generate_grid_path, calculate_target_vectors, normalize_vectors, \
+                                         calculate_absolute_angular_error, calculate_distance, rotate_vector_by_yaw
+from matplotlib.patches import Circle
+import torch
+import torch.nn as nn
+from torchvision.transforms import functional as TF
+from matplotlib.colors import ListedColormap
+from matplotlib.patches import Circle
+import os
+import csv
+import time
+
+
+def preprocess(image, save_images = False, counter = None, run_index = None, debug = False, cropbox_params = None):
+    """Custom preprocessing logic for image data.
+    
+    Args:
+        image: Input image in NumPy array format.
+
+    Returns:
+        Preprocessed image as a torch tensor.
+    """
+    # Example preprocessing (users can adjust as needed)
+    rgb_img = Image.fromarray(image, "RGB")
+    # Example crop, resize, or any custom transformation
+    if cropbox_params is None:
+        cropbox_params = (0, 312, 1024, 712)
+    rgb_img = rgb_img.crop(cropbox_params)
+
+    if save_images:
+        debug_dir = "debug_images"
+        os.makedirs(debug_dir, exist_ok=True)
+
+        # check how many files there already are in the directory:
+        files = os.listdir(debug_dir)
+        if counter == None:
+            it = len(files)
+        else:
+            it = counter
+        
+        image_name = f"{debug_dir}/image_run_{run_index}_step_{it}.png"
+        rgb_img.save(image_name)
+
+    if debug:
+        plt.figure()
+        plt.imshow(rgb_img)
+        plt.show()
+        plt.close()
+
+    return rgb_img
+
+def flow_match_images(home_image, image, resize_factor = 1, graphics = False, method = "LK"):
+    
+    if resize_factor < 1:
+        image = image.resize((int(image.width * resize_factor), int(image.height * resize_factor)))
+        home_image = home_image.resize((int(home_image.width * resize_factor), int(home_image.height * resize_factor)))
+    
+    width = image.width
+
+    # calculate the optical flow between the two images - cv2 has to be imported here - at the top it leads to crash
+    import cv2
+    # convert to grayscale:
+    image_arr = np.array(image)
+    home_image_arr = np.array(home_image)
+    image = cv2.cvtColor(image_arr, cv2.COLOR_RGB2GRAY)
+    home_image = cv2.cvtColor(home_image_arr, cv2.COLOR_RGB2GRAY)
+
+    if method == "FB":
+        # calculate the optical flow
+        flow = cv2.calcOpticalFlowFarneback(home_image, image, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+        horizontal_flow = flow[..., 0]
+        flow = horizontal_flow
+        avg_flow = np.mean(flow, axis=0)
+
+        if graphics:
+            # show the flow:
+            plt.figure()
+            plt.subplot(2, 2, 1)
+            plt.imshow(home_image, cmap='gray')
+            plt.title("Home Image")
+            plt.subplot(2, 2, 2)
+            plt.imshow(image, cmap='gray')
+            plt.title("Image")
+            plt.subplot(2, 2, 3)
+            # color bar with divergent color range:
+            # Define a custom colormap with white for 0, red for negative, and blue for positive
+            cmap = plt.cm.RdBu
+            max = np.max(np.abs(flow))
+            norm = plt.Normalize(vmin=-max, vmax=max)
+            # Display the flow with the custom colormap
+            plt.imshow(flow, cmap=cmap, norm=norm)
+            plt.colorbar()
+            plt.title("Optical Flow")
+
+            # Find the x-coordinate that separates positive and negative flow:
+            plt.subplot(2, 2, 4)
+            x_coords = np.arange(width)
+            plt.plot(x_coords, avg_flow)
+            plt.xlabel('x coordinate')
+            plt.ylabel('Average flow')
+            plt.show() 
+
+        crossings = []
+        for i in range(1, avg_flow.shape[0]):
+            if avg_flow[i-1] < 0 and avg_flow[i] >= 0:
+                crossings.append(i)
+
+        num_crossings = len(crossings)
+        print(f"Number of crossings: {num_crossings}")
+
+        px_separation = crossings[0] / resize_factor
+
+    elif method == "LK":
+
+        # detect good features to track:
+        p0 = cv2.goodFeaturesToTrack(home_image, maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7)
+        # calculate the optical flow
+        p1, st, err = cv2.calcOpticalFlowPyrLK(home_image, image, p0, None)
+        # calculate the flow:
+        flow = p1 - p0
+
+        # show the flow vectors: 
+        if graphics:
+            plt.figure()
+            plt.imshow(0.5 * home_image + 0.5 * image, cmap='gray')
+            for i in range(len(p0)):
+                plt.arrow(p0[i, 0, 0], p0[i, 0, 1], flow[i, 0, 0], flow[i, 0, 1], color='r', head_width=3)
+            plt.title("Optical Flow Vectors")
+            plt.show()
+            plt.close()
+        
+        px_separation = 0
+
+    return px_separation
+
+def rotation_match_images(image, home_image, resize_factor = 0.1, show_error_plot = False):
+
+    # Resize the images to speed up the process
+    image = image.resize((int(image.width * resize_factor), int(image.height * resize_factor)))
+    home_image = home_image.resize((int(home_image.width * resize_factor), int(home_image.height * resize_factor)))
+    # rotate the image over all pixels and find the best match
+    width = image.width
+    # get an np.array of the image:
+    image = np.array(image)
+    home_image = np.array(home_image)
+    # convert to grayscale:
+    image = np.dot(image[...,:3], [0.2989, 0.5870, 0.1140])
+    home_image = np.dot(home_image[...,:3], [0.2989, 0.5870, 0.1140])
+
+    mse = np.zeros([width,1])
+    for rot in range(width):
+        # rotate the image
+        rotated_image = np.roll(image, rot, axis=1)
+        # calculate the difference between the images
+        diff = np.abs(rotated_image - home_image)
+        # calculate the mean squared error
+        mse[rot] = np.mean(diff ** 2)
+        if rot == 0:
+            best_mse = mse[rot]
+            best_rot = rot
+        else:
+            if mse[rot] < best_mse:
+                best_mse = mse[rot]
+                best_rot = rot
+    
+    if show_error_plot:
+        plt.figure()
+        plt.subplot(2, 2, 1)
+        plt.imshow(image)
+        plt.title("Image")
+        plt.subplot(2, 2, 2)
+        plt.imshow(home_image)
+        plt.title("Home Image")
+        plt.subplot(2, 2, 3)
+        plt.plot(np.arange(width), mse)
+        plt.title("Mean Squared Error")
+        plt.xlabel("Rotation")
+        plt.ylabel("MSE")
+        plt.subplot(2, 2, 4)
+        # show the difference image after the best rotation:
+        rotated_image = np.roll(image, best_rot, axis=1)
+        diff = np.abs(rotated_image - home_image)
+        plt.imshow(diff, cmap='RdBu')
+        plt.title("Difference Image")
+        plt.colorbar()
+        plt.show()
+
+    best_rot /= resize_factor
+
+    return best_rot, best_mse
+
+def match_images(image, home_image, resize_factor = 0.1):
+
+    # Resize the images to speed up the process
+    image = image.resize((int(image.width * resize_factor), int(image.height * resize_factor)))
+    home_image = home_image.resize((int(home_image.width * resize_factor), int(home_image.height * resize_factor)))
+    width = image.width
+    # get an np.array of the image:
+    image = np.array(image)
+    home_image = np.array(home_image)
+    # convert to grayscale:
+    image = np.dot(image[...,:3], [0.2989, 0.5870, 0.1140])
+    home_image = np.dot(home_image[...,:3], [0.2989, 0.5870, 0.1140])
+
+    diff = np.abs(image - home_image)
+    # calculate the mean squared error
+    mse = np.mean(diff ** 2)
+
+    return mse
+
+
+def get_vector_field_from_MSE(MSE, area_size=20, grid_size=40, graphics=True):
+    # get the x and y coordinates of the MSE:
+    x = np.linspace(-area_size, area_size, grid_size)
+    y = np.linspace(-area_size, area_size, grid_size)
+    x, y = np.meshgrid(x, y)
+    # get the dx and dy from the MSE:
+    dx = np.zeros_like(MSE)
+    dy = np.zeros_like(MSE)
+    for i in range(grid_size):
+        for j in range(grid_size):
+            k = max(i-1, 0)
+            l = max(j-1, 0)
+            m = min(i+1, grid_size-1)
+            n = min(j+1, grid_size-1)
+            dx[i,j] = -(MSE[i,n] - MSE[i,l]) / (2 * (x[i,m] - x[i,k]))
+            dy[i,j] = -(MSE[m,j] - MSE[k,j]) / (2 * (y[n,j] - y[l,j]))
+            # normalize the vectors:
+            norm = np.sqrt(dx[i,j]**2 + dy[i,j]**2)
+            if norm > 0:
+                dx[i,j] /= norm
+                dy[i,j] /= norm
+            else:
+                dx[i,j] = 0
+                dy[i,j] = 0
+    
+    if graphics:
+        plt.figure()
+        plt.quiver(x, y, dx, dy, angles='xy', scale_units='xy', scale=1)
+        plt.xlim(-area_size, area_size)
+        plt.ylim(-area_size, area_size)
+        plt.title("Vector Field from MSE")
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.grid()
+        plt.show()
+    
+    return dx, dy
+
+def get_vector_from_grid(positions, predictions, position):
+    n_pos = len(positions)
+    # get the closest four points in the grid:
+    distances = np.zeros(n_pos)
+    for i in range(n_pos):
+        distances[i] = calculate_distance(positions[i], position)
+    
+    # get the four closest points:
+    closest_indices = np.argsort(distances)[:4]
+    closest_positions = positions[closest_indices]
+    closest_predictions = predictions[closest_indices]
+    # calculate the weights to get a bilinear interpolation:
+    weights = np.zeros(4)
+    # arrange the closest positions in a 2x2 grid (top left, top right, bottom left, bottom right):
+    closest_positions_grid = np.zeros((2, 2, 2))
+    closest_predictions_grid = np.zeros((2, 2, 2))
+    for i in range(4):
+        if closest_positions[i][0] < position[0]:
+            if closest_positions[i][1] < position[1]:
+                # top left:
+                closest_positions_grid[0, 0] = closest_positions[i]
+                closest_predictions_grid[0, 0] = closest_predictions[i]
+            else:
+                # bottom left:
+                closest_positions_grid[1, 0] = closest_positions[i]
+                closest_predictions_grid[1, 0] = closest_predictions[i]
+        else:
+            if closest_positions[i][1] < position[1]:
+                # top right:
+                closest_positions_grid[0, 1] = closest_positions[i]
+                closest_predictions_grid[0, 1] = closest_predictions[i]
+            else:
+                # bottom right:
+                closest_positions_grid[1, 1] = closest_positions[i]
+                closest_predictions_grid[1, 1] = closest_predictions[i]
+    # calculate the weights:
+    weights[0] = (closest_positions_grid[0, 1][0] - position[0]) * (closest_positions_grid[1, 0][1] - position[1])
+    weights[1] = (position[0] - closest_positions_grid[0, 0][0]) * (closest_positions_grid[1, 0][1] - position[1])
+    weights[2] = (closest_positions_grid[0, 1][0] - position[0]) * (position[1] - closest_positions_grid[0, 0][1])
+    weights[3] = (position[0] - closest_positions_grid[0, 0][0]) * (closest_positions_grid[1, 0][1]) - position[1]
+    # normalize the weights:
+    weights /= np.sum(weights)
+    # calculate the prediction:
+    prediction = np.zeros(2)
+    for i in range(4):
+        prediction[0] += weights[i] * closest_predictions_grid[i // 2, i % 2][0]
+        prediction[1] += weights[i] * closest_predictions_grid[i // 2, i % 2][1]
+
+    return prediction
+
+def get_image(orientation, position, camera, my_world, sleep_time = 0.05):
+
+    image = []
+    tries = 0
+    while (len(image) == 0 or tries < 3) and tries < 10:
+        tries += 1
+        camera.set_world_pose(position, orientation)
+        my_world.step(render=True)
+        image = camera.get_rgba()
+        
+        short_sleep = 5
+        if tries > 2:
+            if tries < short_sleep:
+                time.sleep(sleep_time)
+            else: 
+                # sleep longer:
+                time.sleep((tries - (short_sleep-1)) * sleep_time)
+
+    if tries >= 10:
+        raise RuntimeError("Failed to get image after 10 tries. Check if the camera is set up correctly.")
+    else:
+        image = image[:,:,:3]
+        image = preprocess(image, save_images = False)
+        return image
+
+
+# TODO: this should go to utils:
+def get_locations_path(map_path):
+    # find '_area' in the map_path:
+    area_index = map_path.find('_area')
+    length_area = len('_area')
+    # insert '_locations' after '_area':
+    locations_path = map_path[:area_index + length_area] + '_locations' + map_path[area_index + length_area:]
+    # change the extension from usd to csv:
+    locations_path = locations_path[:-4] + '.csv'
+    return locations_path
+
+# TODO: this should go to utils:
+def load_landmark_locations(locations_path):
+    landmark_filename = locations_path
+    if os.path.exists(landmark_filename):
+        with open(landmark_filename, mode='r') as csvfile:
+            reader = csv.reader(csvfile)
+            next(reader)  # Skip header row
+            X = []
+            Y = []
+            Z = []
+            for row in reader:
+                x, y, z = row
+                X.append(float(x))
+                Y.append(float(y))
+                Z.append(float(z))
+            x = np.asarray(X)
+            y = np.asarray(Y)
+            z = np.asarray(Z)
+            n_landmarks = len(X)
+            landmark_positions = np.zeros([n_landmarks, 3])
+            landmark_positions[:, 0] = x
+            landmark_positions[:, 1] = y
+            landmark_positions[:, 2] = z
+    else:
+        print(f"File {landmark_filename} does not exist.")
+        landmark_positions = None
+    return landmark_positions
+
+
+def snapshot_navigation(verbose = True, graphics = True, save_images = False, simulation_app = None, my_world = None, \
+                         usd_path = None, grid_predictions = None, grid_positions = None, debug = True):
+    
+    if simulation_app is None:
+        close_app_at_end = True
+        with open("config/server.json", 'r') as file:
+            options = json.load(file)
+        server = options['server']
+        simulation_app = SimulationApp({"headless": server})
+    else:
+        close_app_at_end = False
+
+    from omni.isaac.core.utils.rotations import euler_angles_to_quat
+    from omni.isaac.sensor import Camera
+    from omni.isaac.core import World
+    from omni.isaac.core.utils.rotations import euler_angles_to_quat
+
+    # Extract parameters from virtual homing config
+    
+    fixed_yaw = True
+
+    # flow: determine optical flow between the current and home image, and determine the FoE and FoC
+    # rotation: determine the best rotation between the current and home image
+    # interpolation: interpolate the predictions around the current position
+    matching_method = "rotation" # "flow", "rotation", "interpolation"
+
+    # get the cropbox params:
+    # load the config render file:
+    config_render_file = "config/config_render.json"
+    with open(config_render_file, 'r') as f:
+        config_render = json.load(f)
+    if usd_path is None:
+        usd_path = config_render['map']
+    virtual_home_position = np.array(config_render['home_position']) # home position to reach
+    cropbox_params = config_render['crop_box_params']
+    image_size = cropbox_params[2] if cropbox_params is not None else 1024
+
+    # load landmark positions:
+    landmark_path = get_locations_path(usd_path)
+    landmark_positions = load_landmark_locations(landmark_path)
+    # obstacle avoidance settings:
+    too_close = 1.0 # minimal distance from landmarks, not to be inside a tree
+    # artificial potential field parameters:
+    d_lim = 2.0  # distance limit for repulsive potential
+    max_step = 2.5  # maximum step size
+
+    if my_world is None:
+        omni.usd.get_context().open_stage(usd_path)
+        my_world = World(stage_units_in_meters=1.0)
+
+    # Initialize camera and load model
+    camera = Camera(prim_path="/World/Camera", name="camera1", resolution=(image_size, image_size))
+    camera.set_projection_type("fisheyeSpherical") # fisheyeSpherical
+    
+    my_world.reset()
+    camera.initialize()
+    my_world.step(render=True)
+    
+    # pause the program to prevent an out of memory crash:
+    print("Sleeping to prevent out of memory crash")
+    time.sleep(15)
+    
+    sleep_time = 0.05
+    
+    # load the virt_homing config:
+    config_virtual_homing_file = "config/config_virt_homing.json"
+    with open(config_virtual_homing_file, 'r') as f:
+        config_virtual_homing = json.load(f)
+
+    start_location_pattern = config_virtual_homing['start_location_pattern'] # square or circle
+    north = True # config_virtual_homing['north'] # Whether the robot always faces north
+    params = config_virtual_homing['params']
+    step_size = params['step_size']
+    gradient_step_size = 1.0
+    count_limit = params['count_limit'] # max number of steps to take in the sim
+    homing_threshold = params['threshold'] # distance to home position to consider successful
+    
+
+    if start_location_pattern == "circle":
+        offset_list = []
+        radius_scales = config_virtual_homing['circle_params'].get('radius_scales', [1.0])
+        n_radius_scales = len(radius_scales)
+        for rs in radius_scales:
+            radius = rs * config_virtual_homing['circle_params'].get('radius', 10)
+            num_points = config_virtual_homing['circle_params'].get('num_points', 16)
+            angles = np.linspace(0, 2*np.pi, num_points, endpoint=False)
+            offset_list.append([(virtual_home_position[0] + radius*np.cos(theta), virtual_home_position[1] + radius*np.sin(theta), virtual_home_position[2]) for theta in angles])
+        offset_list = [item for sublist in offset_list for item in sublist]  # Flatten the list
+
+    # TODO: make this a function in insect utils:
+    # make sure the offet_list is not inside a tree:
+    if landmark_positions is not None:
+        for i in range(len(offset_list)):
+            pos = np.array(offset_list[i])
+            for landmark in landmark_positions:
+                landmark_pos = np.array(landmark)
+                dist = calculate_distance(pos, landmark_pos)
+                if dist < too_close:
+                    # move the position away from the landmark along the vector:
+                    direction = pos[:2] - landmark_pos[:2]
+                    dist_xy = np.linalg.norm(direction[:2])
+                    if dist_xy < 1e-5:
+                        direction = np.array([too_close, 0.0])
+                    else:
+                        direction = direction[:2] / dist_xy
+                    new_pos = list(landmark_pos)
+                    new_pos[:2] = new_pos[:2] + direction * too_close
+                    offset_list[i] = (new_pos[0], new_pos[1], pos[2])
+                    if verbose:
+                        print(f"Adjusted starting position {i} to avoid being too close to a landmark {landmark_pos}, from {pos} to {offset_list[i]}.")
+
+
+    if north:
+        # set all orientations to 180 (North)
+        yaw_list = [180.0] * len(offset_list)
+    else:
+        # take random orientations
+        yaw_list = np.random.uniform(0, 360, len(offset_list))
+
+     # Simulation loop variables
+    successful_runs = 0
+    run_index = 0
+    total_distances = []
+    all_homing_positions = []
+    all_angular_errors = []
+    trajectories = []
+
+    all_image_positions = []
+    all_image_MSEs = []
+
+    n_runs = len(offset_list)
+    successes = np.zeros(n_runs)
+
+    initial_orientation = euler_angles_to_quat([0.0, 0.0, yaw_list[0]], degrees=True)
+    if matching_method != "interpolation":
+        home_image = get_image(initial_orientation, virtual_home_position, camera, my_world)
+
+    for run_index, initial_position in enumerate(offset_list):
+        # Reset the world and camera to the initial position
+        yaw = yaw_list[run_index]
+        orientation = euler_angles_to_quat([0.0, 0.0, yaw], degrees=True)
+
+        homing_positions = [initial_position]
+        position = initial_position
+        counter = 0
+        predictions = []
+        norm_predictions = []
+        angular_errors = []
+
+        success = False
+
+        while calculate_distance(homing_positions[-1], virtual_home_position) > homing_threshold and counter < count_limit:
+
+            if matching_method == "interpolation":
+                # get the closest position:
+                distances = np.zeros(len(grid_positions))
+                for i in range(len(grid_positions)):
+                    distances[i] = calculate_distance(grid_positions[i], position)
+                closest_index = np.argmin(distances)
+                closest_position = grid_positions[closest_index]
+                print(f"Closest position: {closest_position}, position: {position}")
+                prediction = grid_predictions[closest_index]
+
+                dx = -prediction[0]
+                dy = -prediction[1]
+
+            else:
+                # Take a step left, a step right, forward and backward, and calculate the MSE between the best rotated version for all positions:
+                # left:
+                left_position = position[0] - gradient_step_size
+                left_image = get_image(orientation, [left_position, position[1], position[2]], camera, my_world, sleep_time = sleep_time)
+                left_image = get_image(orientation, [left_position, position[1], position[2]], camera, my_world, sleep_time = sleep_time)
+                right_position = position[0] + gradient_step_size
+                right_image = get_image(orientation, [right_position, position[1], position[2]], camera, my_world, sleep_time = sleep_time)
+                right_image = get_image(orientation, [right_position, position[1], position[2]], camera, my_world, sleep_time = sleep_time)
+                forward_position = position[1] + gradient_step_size
+                forward_image = get_image(orientation, [position[0], forward_position, position[2]], camera, my_world, sleep_time = sleep_time)
+                forward_image = get_image(orientation, [position[0], forward_position, position[2]], camera, my_world, sleep_time = sleep_time)
+                backward_position = position[1] - gradient_step_size
+                backward_image = get_image(orientation, [position[0], backward_position, position[2]], camera, my_world, sleep_time = sleep_time)
+                backward_image = get_image(orientation, [position[0], backward_position, position[2]], camera, my_world, sleep_time = sleep_time)
+
+                if debug:
+                    # get the data as a numpy array:
+                    l_image = np.array(left_image) / 255.0
+                    r_image = np.array(right_image) / 255.0
+
+                    # bring l_image and r_image to one channel (grayscale):
+                    l_image = np.dot(l_image[...,:3], [0.2989, 0.5870, 0.1140])
+                    r_image = np.dot(r_image[...,:3], [0.2989, 0.5870, 0.1140])
+                    diff_image = np.abs(l_image - r_image)
+                    
+                    if np.sum(diff_image) <= 1e-5:
+                        print("Images the same!")
+
+                    # get the data as a numpy array:
+                    f_image = np.array(forward_image)  / 255.0
+                    b_image = np.array(backward_image) / 255.0
+
+                    # bring f_image and b_image to one channel (grayscale):
+                    f_image = np.dot(f_image[...,:3], [0.2989, 0.5870, 0.1140])
+                    b_image = np.dot(b_image[...,:3], [0.2989, 0.5870, 0.1140])
+                    diff_image = np.abs(f_image - b_image)
+                    
+                    if np.sum(diff_image) <= 1e-5:
+                        print("Images the same!")
+                    
+                # calculate the MSE for all images:
+                if matching_method == "rotation":
+                    resize_fact = 0.25
+                    if False: # north:
+                        left_mse = match_images(left_image, home_image, resize_factor=resize_fact)
+                        right_mse = match_images(right_image, home_image, resize_factor=resize_fact)
+                        forward_mse = match_images(forward_image, home_image, resize_factor=resize_fact)
+                        backward_mse = match_images(backward_image, home_image, resize_factor=resize_fact)
+
+                        # calculate the dx and dy from the MSE:
+                        dx = (right_mse - left_mse) / (2 * gradient_step_size)
+                        dy = (forward_mse - backward_mse) / (2 * gradient_step_size)
+                    else:
+                        left_rot, left_mse = rotation_match_images(left_image, home_image, resize_factor=resize_fact, show_error_plot=False)
+                        right_rot, right_mse = rotation_match_images(right_image, home_image, resize_factor=resize_fact, show_error_plot=False)
+                        forward_rot, forward_mse = rotation_match_images(forward_image, home_image, resize_factor=resize_fact, show_error_plot=False)
+                        backward_rot, backward_mse = rotation_match_images(backward_image, home_image, resize_factor=resize_fact, show_error_plot=False)
+                
+                        all_image_positions.append([left_position, position[1]])
+                        all_image_positions.append([right_position, position[1]])
+                        all_image_positions.append([position[0], forward_position])
+                        all_image_positions.append([position[0], backward_position])
+                        all_image_MSEs.append(left_mse)
+                        all_image_MSEs.append(right_mse)
+                        all_image_MSEs.append(forward_mse)
+                        all_image_MSEs.append(backward_mse)
+
+                        dx = (right_mse[0] - left_mse[0]) / (2 * gradient_step_size)
+                        dy = (forward_mse[0] - backward_mse[0]) / (2 * gradient_step_size)
+
+            norm = np.sqrt(dx**2 + dy**2)
+            if norm > 0:
+                dx /= norm
+                dy /= norm
+            else:
+                dx = 0
+                dy = 0
+
+            # apply obstacle avoidance using artificial potential fields:
+            move = np.array([-dx, -dy])
+             # check distance to all landmarks:
+            if landmark_positions is not None:
+                for landmark in landmark_positions:
+                    landmark_pos = np.array(landmark)
+                    dist = calculate_distance(position, landmark_pos)
+                    if dist < d_lim:
+                        if verbose:
+                            print(f"Applying obstacle avoidance for landmark at {landmark_pos} with distance {dist:.2f}, old move = {move}", end  ='')
+                        # calculate repulsive force:
+                        repulsive_magnitude = 0.5 * (1.0 / dist - 1.0 / d_lim) / (dist ** 2)
+                        direction_away = position[:2] - landmark_pos[:2]
+                        direction_away = direction_away / np.linalg.norm(direction_away)
+                        repulsive_force = repulsive_magnitude * direction_away
+                        move = np.array([-dx, -dy]) + repulsive_force
+                        magn_move = np.linalg.norm(move)
+                        if magn_move > 1e-5:
+                            move = move / magn_move
+                        if verbose:
+                            print(f", repulsive_force = {repulsive_force}, old move = {-dx}, {-dy}, new move = {move}")
+
+            target_dx  = virtual_home_position[0] - position[0]
+            target_dy  = virtual_home_position[1] - position[1]
+            target_vector = np.asarray([target_dx, target_dy])
+            target_magn = np.linalg.norm(target_vector)
+            prediction_vector = np.asarray([-dx, -dy])
+            # calculate the angular error:
+            angular_error = calculate_absolute_angular_error(target_vector, prediction_vector)
+            angular_errors.append(angular_error)
+
+            new_position = (position[0] + move[0] * step_size, position[1] + move[1] * step_size, position[2])
+            
+            position = new_position
+            homing_positions.append(position)
+
+            counter += 1
+
+            if calculate_distance(position, virtual_home_position) <= homing_threshold:
+                successes[run_index] = 1
+                successful_runs += 1
+                break
+
+        # Calculate total distance traveled and straight-line distance
+        total_distance = sum(np.linalg.norm(np.array(homing_positions[i + 1]) - np.array(homing_positions[i])) for i in range(len(homing_positions) - 1))
+        # Shortest distance should take into account that the run ends when it crosses the homing threshold:
+        straight_line_distance = calculate_distance(homing_positions[0], virtual_home_position) - homing_threshold
+        total_distances.append((straight_line_distance, total_distance))
+
+        # Store angular errors and positions
+        trajectories.append(homing_positions)
+        all_homing_positions.extend(homing_positions)
+        all_angular_errors.extend(angular_errors)
+        
+        run_index += 1
+        if verbose:
+            print(f"Run {run_index} out of {n_runs} completed. Total successes: {successful_runs}")
+
+    if verbose:
+        print(f"Total successful runs: {successful_runs} out of {n_runs}. Success percentage = {successful_runs / n_runs * 100:.2f}%")
+
+    straight_line_distances = [dist[0] for dist in total_distances]
+    total_distances_traveled = [dist[1] for dist in total_distances]
+
+    if start_location_pattern == "circle" and n_radius_scales > 1:
+        # Determine the success rate for each radius scale:
+        success_rates = []
+        for i, rs in enumerate(radius_scales):
+            indices = list(np.asarray(range(num_points)) + i * num_points)
+            success_rate = np.sum(successes[indices]) / len(indices)
+            success_rates.append(success_rate)
+        if graphics:
+            plt.figure()
+            plt.plot(radius_scales, success_rates)
+            plt.xlabel('Radius Scale')
+            plt.ylabel('Success Rate')
+            plt.title('Success Rate by Radius Scale')
+            plt.show()
+    else:
+        radius_scales = None
+        success_rates = None
+
+
+    if graphics:
+        # plot the trajectories:
+        plt.figure()
+        for trajectory in trajectories:
+            x = [pos[0] for pos in trajectory]
+            y = [pos[1] for pos in trajectory]
+            plt.plot(x, y, marker='o', markersize=2)
+            # draw a circle around the home position:
+            circle = Circle((virtual_home_position[0], virtual_home_position[1]), homing_threshold, color='r', fill=False)
+            plt.gca().add_patch(circle)
+        plt.xlabel('X Position')
+        plt.ylabel('Y Position')
+        plt.title('Trajectories of Homing Positions')
+        plt.show()
+
+    if graphics:
+        #  make a scatter plot of all_image_positions, coloring them by their MSE:
+        plt.figure()
+        all_image_positions = np.array(all_image_positions)
+        scatter = plt.scatter(all_image_positions[:, 0], all_image_positions[:, 1], c=all_image_MSEs, cmap='viridis', s=10)
+        plt.colorbar(scatter, label='MSE')
+        plt.xlabel('X')
+        plt.ylabel('Y')
+        plt.show() 
+
+    return successful_runs, total_distances_traveled, straight_line_distances, all_angular_errors, radius_scales, success_rates, trajectories, successes
+
+def catchment_area_grid(verbose = True, graphics = True, save_images = False, simulation_app = None, my_world = None, usd_path = None):
+
+    if simulation_app is None:
+        close_app_at_end = True        
+        with open("config/server.json", 'r') as file:
+            options = json.load(file)
+        server = options['server']
+        simulation_app = SimulationApp({"headless": server})
+    else:
+        close_app_at_end = False
+
+    from omni.isaac.core.utils.rotations import euler_angles_to_quat
+    from omni.isaac.sensor import Camera
+    from omni.isaac.core import World
+    from omni.isaac.core.utils.rotations import euler_angles_to_quat
+
+    # Extract parameters from virtual homing config
+    
+    fixed_yaw = True
+    matching_method = "rotation" # "flow", "rotation", or "direct"
+
+    # get the cropbox params:
+    # load the config render file:
+    config_render_file = "config/config_render.json"
+    with open(config_render_file, 'r') as f:
+        config_render = json.load(f)
+    if usd_path is None:
+        usd_path = config_render['map']
+    virtual_home_position = np.array(config_render['home_position']) # home position to reach
+    cropbox_params = config_render['crop_box_params']
+    image_size = cropbox_params[2] if cropbox_params is not None else 1024
+
+    if my_world is None:
+        omni.usd.get_context().open_stage(usd_path)
+        my_world = World(stage_units_in_meters=1.0)
+
+    # Initialize camera and load model
+    camera = Camera(prim_path="/World/Camera", name="camera1", resolution=(image_size, image_size))
+    camera.set_projection_type("fisheyeSpherical") # fisheyeSpherical
+    
+    my_world.reset()
+    camera.initialize()
+    my_world.step(render=True)
+    
+    # pause the program to prevent an out of memory crash:
+    print("Sleeping to prevent out of memory crash")
+    time.sleep(15)
+    
+    sleep_time = 0.05
+    area_size = 20
+    x_min = -area_size
+    x_max = area_size
+    y_min = -area_size
+    y_max = area_size
+    grid_size = 40
+    x = np.linspace(x_min, x_max, grid_size)
+    y = np.linspace(y_min, y_max, grid_size)
+    x, y = np.meshgrid(x, y)
+    z = virtual_home_position[2] * np.ones_like(x) 
+    # set all orientations to 180 (North)
+    yaw = 180.0
+    yaw_list = yaw * np.ones_like(x)
+
+    initial_orientation = euler_angles_to_quat([0.0, 0.0, yaw], degrees=True)
+    c = 0
+    home_image = []
+    while len(home_image) == 0 and c < 10:
+        camera.set_world_pose(virtual_home_position, initial_orientation)
+        my_world.step(render=True)
+        home_image = camera.get_rgba()
+        time.sleep(sleep_time)
+        c += 1
+    if len(home_image) == 0:
+        # raise error:
+        raise RuntimeError("Could not get home image after 10 attempts. Check the camera and world setup.")
+    home_image = preprocess(home_image[:,:,:3])
+
+    image = home_image
+
+    DX = np.zeros_like(x)
+    DY = np.zeros_like(x)
+    yaw_desired = np.zeros_like(x)
+    MSE = np.zeros_like(x)
+
+    for i in range(grid_size):
+        for j in range(grid_size):
+
+            print(f'{i * grid_size + j} of {grid_size * grid_size}: ({x[i,j]}, {y[i,j]}, {z[i,j]}), i = {i}, j = {j}')
+            
+            for k in range(3):
+                orientation = initial_orientation
+                camera.set_world_pose([x[i,j], y[i,j], z[i,j]], orientation)
+                my_world.step(render=True)
+                image = camera.get_rgba()
+                time.sleep(sleep_time)
+
+            image = preprocess(image[:,:,:3], save_images = False, counter = i, run_index = j)
+
+
+            if matching_method == "flow":
+                # Find the best matching rotation direction:
+                pix_offset = flow_match_images(home_image, image, resize_factor=1,  graphics = True, method = "LK")
+            else:
+                # Find the best matching rotation direction:
+                if fixed_yaw:
+                    best_mse = match_images(image, home_image, resize_factor=0.25)
+                    pix_offset = 0
+                else:
+                    pix_offset, best_mse = rotation_match_images(image, home_image, resize_factor=0.25, show_error_plot=False)
+                MSE[i,j] = best_mse
+
+            # determine the relative yaw:
+            norm_pix_hor = (pix_offset - image.width / 2) /  (image.width / 2)
+            yaw_desired[i,j] = yaw_list[i,j] - norm_pix_hor * 180.0
+            if yaw_desired[i,j] > 180.0:
+                yaw_desired[i,j] -= 360.0
+            if yaw_desired[i,j] < -180.0:
+                yaw_desired[i,j] += 360.0
+
+            # determine dx and dy:
+            dx  = np.cos(yaw_desired[i,j]) * (area_size / grid_size)
+            dy  = np.sin(yaw_desired[i,j]) * (area_size / grid_size) 
+            DX[i,j] = dx
+            DY[i,j] = dy
+
+            time.sleep(sleep_time)
+
+    if matching_method == 'rotation':
+        dx, dy = get_vector_field_from_MSE(MSE, area_size=area_size, grid_size=grid_size, graphics=graphics)
+        predictions = np.column_stack((dx.flatten(), dy.flatten()))
+        positions = np.column_stack((x.flatten(), y.flatten()))
+
+    if graphics:
+        # plot arrows for DX and DY:
+        plt.figure()
+        plt.quiver(x, y, DX, DY, angles='xy', scale_units='xy', scale=1)
+        plt.xlim(x_min, x_max)
+        plt.ylim(y_min, y_max)
+        plt.title("Catchment Area")
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.grid()
+        plt.show()
+
+    if graphics and matching_method == "rotation":    
+        # plot the MSE:
+        plt.figure()
+        plt.imshow(MSE, cmap='hot', interpolation='nearest')
+        # mak the x-axis and y_axis go from x_min to x_max and y_min to y_max:
+        plt.xticks(np.arange(grid_size), np.round(np.linspace(x_min, x_max, grid_size), 2))
+        plt.yticks(np.arange(grid_size), np.round(np.linspace(y_min, y_max, grid_size), 2))
+        plt.colorbar()
+        plt.title("Mean Squared Error")
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.show()
+
+        plt.figure()
+        plt.quiver(x, y, dx, dy, angles='xy', scale_units='xy', scale=1)
+        plt.xlim(x_min, x_max)
+        plt.ylim(y_min, y_max)
+        plt.title("Vector Field from MSE")
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.grid()
+        plt.show()
+
+    if close_app_at_end:
+        simulation_app.close()
+
+    return predictions, positions, my_world
+        
+# Entry point
+if __name__ == "__main__":
+    snapshot_navigation()

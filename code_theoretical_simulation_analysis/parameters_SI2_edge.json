@@ -1,0 +1,45 @@
+{
+    "angular_noise": false,
+    "perceptron": false,
+    "n_hidden": 100,
+    "biases": true,
+    "symmetry_network": false,
+    "ID": true,
+    "AD": true,
+    "N": false,
+    "OCC": false,
+    "POLAR": false,
+    "network_analysis": false,
+    "analyze_generalization": false,
+    "analyze_ambiguity": false,
+    "analyze_hidden_activations": false,
+    "nest_location": [
+        0,
+        0
+    ],
+    "landmark_radius": 2,
+    "bee_path": false,
+    "circular_learning_region": false,
+    "size_region": 10,
+    "size_learning_region": 10,
+    "offset_learning_region": [
+        0,
+        0
+    ],
+    "train": true,
+    "n_samples": 10000,
+    "n_epochs": 500,
+    "random_landmarks": false,
+    "n_landmarks": 1,
+    "landmarks": [
+    [10, 10]
+    ],
+    "show_histogram": false,
+    "show_hidden_units": false,
+    "analyze_single_unit": false,
+    "analyze_own_weights": false,
+    "identify_checkered_neurons": false,
+    "single_heading": false,
+    "plot_error_radii": false,
+    "plot_theory": false
+}

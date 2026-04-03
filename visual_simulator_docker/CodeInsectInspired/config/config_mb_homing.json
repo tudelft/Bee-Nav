@@ -1,0 +1,27 @@
+{
+    "paths": {
+        "rgb_folder": "cars/brick_world_simple3_1000_mushroom_norotation_bee_10_560_01/Replicator/rgb",
+        "csv_path": "cars/brick_world_simple3_1000_mushroom_norotation_bee_10_560_01/dataset_navigation.csv"
+    },
+    "process": {
+        "keep_ratio": 0.5,
+        "facing": "fixed_next",
+        "rotate_step": 10
+    },
+    "homing": {
+        "validation": false,
+        "usd_path": "maps/brick_world_simple3.usd",
+        "home_pos": [
+            0.0,
+            0.0,
+            1.5
+        ],
+        "radius": 6.0,
+        "num_starts": 4,
+        "max_steps": 200,
+        "step_size": 0.2,
+        "gain": 500.0,
+        "threshold": 1.0,
+        "output_dir": "mushroom_body/results_homing_pipeline/brick_world_simple3_1000_mushroom_norotation_bee_10_560_01_testnewimage_50000kc_16synapses_001norm"
+    }
+}

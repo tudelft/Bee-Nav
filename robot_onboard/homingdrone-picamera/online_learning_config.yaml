@@ -1,0 +1,11 @@
+# Config for the online learning mode
+
+input_size: '192x1800'
+rgb: True
+net_size: 'small'  # Or 'inceptattention' 
+wind_correction: False 
+training:
+  batch_size: 4
+  replay_buffer_size: 20000
+  log_interval: 50
+  save_interval: 50

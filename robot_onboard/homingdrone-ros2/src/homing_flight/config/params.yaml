@@ -1,0 +1,15 @@
+homing_control_node:  # Node name
+  ros__parameters:
+    takeoff_height: -1.0
+    reach_point_margin: 0.1
+    reach_yaw_margin: 0.174
+    yaw_clamp: 0.2
+    position_clamp: 1.2
+    moving_step: 0.1
+    initial_mode: 'outbound'
+    outbound_shape: 'insect'
+    smallest_step: 0.1
+    init_heading: 0.0
+    outbound_times: 1
+    env: 'indoor'
+    obstacle_avoidance: False

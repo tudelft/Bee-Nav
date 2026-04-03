@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Generated outputs
+output/
+results/
+models/
+networks/
+training_logs/
+
+# Isaac Sim assets (download separately, see visual_simulator_docker/README.md)
+visual_simulator_docker/isaac-sim_assets/
+
+# Generated simulation data
+visual_simulator_docker/CodeInsectInspired/forest/
+visual_simulator_docker/CodeInsectInspired/cars/
+
+# Core dumps
+core.*
+
+# Environment files with local paths
+*.env.local

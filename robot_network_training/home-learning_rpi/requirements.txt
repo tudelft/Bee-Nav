@@ -1,0 +1,7 @@
+PyYAML
+torch
+torchvision
+torchaudio
+tqdm
+pandas
+opencv-python

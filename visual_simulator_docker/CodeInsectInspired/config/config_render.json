@@ -1,0 +1,15 @@
+{
+    "map": "/isaac-sim/CodeInsectInspired/maps/forest_6_trees_20x20_area_0.usd",
+    "shape_flight": "bee",
+    "shape_params": [10],
+    "output_folder": "/isaac-sim/CodeInsectInspired/forest/forest_6_trees_home_circle_1000/",
+    "home_position": [0.0, 0.0, 1.5],
+    "number_cameras": 4,
+    "use_noisy_spiral": true,
+    "noise_params": [0.125, 2.5, 0.02, 0.0025, 2, 0.01],
+    "only_point_north": true,
+    "n_positions": 1000,
+    "csv_filename": "dataset_navigation.csv",
+    "crop": true,
+    "crop_box_params": [0, 312, 1024, 712]
+}

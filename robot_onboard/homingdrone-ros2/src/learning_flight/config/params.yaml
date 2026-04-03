@@ -1,0 +1,24 @@
+learning_control_node:  # Node name
+  ros__parameters:
+    # takeoff parameters
+    takeoff_height: -1.0  # Takeoff height
+    takeoff_yaw: 0.0  # Yaw angle
+    init_heading: 0.0 # for compass offset, fill in the current heading to offset it to 0
+    # clamp parameters
+    position_clamp: 1.2
+    yaw_clamp: 0.2
+    # learning parameters
+    learning_pattern: 'bee' # spiral or square or grid or bee or test([(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)])
+    facing: 'next'  # home, next or '0' for constat learning_yaw or '2' for both nextpoint then home, or 'omni'
+    obstacle_avoidance: False
+    # if omni
+    # if grid
+    grid_diff: 0.5
+    grid_side_size: 5
+    quadrant: 1
+    # reach parameters 
+    reach_point_margin: 0.08
+    reach_yaw_margin: 0.174
+    omni_step: 10 # step size in degrees
+    #learning time
+    learning_time: 0.3 # time in seconds from reach the waypoint to take an image

@@ -1,0 +1,11 @@
+{
+    "ground_plane": "/isaac-sim/CodeInsectInspired/maps/grass_plane.usda",
+    "output_name": "/isaac-sim/CodeInsectInspired/maps/simple_environment_5_unique_landmarks.usd",
+    "unique_landmarks": true,
+    "radius": 1.0,
+    "height": 6.0,
+    "number_cameras": 4,
+    "landmarks": [[3.0, 2.0, -0.5], [3.0, -2.0, -0.5], [-3.0, 2.0, -0.5], [-3.0, -2.0, -0.5], [8.0, 0.0, -0.5]],
+    "north_pole": false,
+    "home_pole": false
+}

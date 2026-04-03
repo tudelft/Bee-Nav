@@ -1,0 +1,10 @@
+{
+    "ground_plane": "/isaac-sim/CodeInsectInspired/maps/env3_clean.usd",
+    "props": "/isaac-sim/isaac-sim_assets/Trees",
+    "num_locations": 7,
+    "area_bounds": 50,
+    "min_separation": 5.0,
+    "home_pole": false,
+    "home_pole_height": 1.2,
+    "home_pole_radius": 1.0
+}

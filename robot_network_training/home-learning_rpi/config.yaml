@@ -1,0 +1,22 @@
+# general
+input_size: 192x1800 
+rgb: True 
+crop_type: full 
+net_size: inceptattention # or small for compact network
+wind_correction: True #True if using outdoor images, False if indoor cyberzoo images
+additional_suffix: _Batch4Coloraug
+
+# training
+training_data_path: "data/train/learning_outdoor_goodday"
+num_epochs: 1
+
+
+# testing
+testing_data_path: "data/test/homing_outdoor_goodday"
+network_path: 'training_logs/ONLINE_DEV_learning_outdoor_goodday_full_windcorrected_Batch4Coloraug/gazenet_offline.pth'
+
+# evaluating
+evaluating_data_path: "data/preprocessed_test/homing_outdoor_goodday" # preprocessed data for evaluation
+ground_truth: "manual" # or "mocap"if cyberzoo data
+annotate_image: True # generate a folder with annotation on the image, ground truth as well if ground truth is not NA
+network: "gazenet_offline" # the name of the neural networks
