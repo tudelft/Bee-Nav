@@ -1,6 +1,6 @@
 # Insect Navigation Simulation (Isaac Sim 4.2)
 
-This repository contains the simulation environment and code for **Insect-inspired Navigation for Central-foraging Robots**.
+This folder contains the simulation environment and code for **Efficient robot navigation inspired by honeybee learning flights**.
 
 To ensure full reproducibility of our results, we provide a containerized environment based on Isaac Sim 4.2.0. This allows the simulation to run on Ubuntu Linux without complex local installation.
 
@@ -35,7 +35,7 @@ Clone this repository and navigate to the `visual_simulator_docker` folder.
 
 The 3D assets (tree models, textures, materials) are not included in this repository due to their size (~2.4 GB). Download them separately:
 
-1. Download the `isaac-sim_assets` folder from [Zenodo/SURFdrive link — TODO: insert URL].
+1. Download the `isaac-sim_assets` folder from [SURFdrive](https://surfdrive.surf.nl/s/qardanQkDLwe7m2).
 2. Extract it into this directory so the folder structure looks like:
 
 ```

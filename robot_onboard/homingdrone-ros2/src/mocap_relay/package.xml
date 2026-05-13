@@ -4,8 +4,8 @@
   <name>mocap_relay</name>
   <version>0.0.1</version>
   <description>Relays motion capture data to PX4 with timestamp synchronization.</description>
-  <maintainer email="user@todo.todo">user</maintainer>
-  <license>TODO: License declaration</license>
+  <maintainer email="d.ou@tudelft.nl">Dequan Ou</maintainer>
+  <license>MIT</license>
 
   <depend>rclpy</depend>
   <depend>px4_msgs</depend>

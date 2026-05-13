@@ -3,9 +3,9 @@
 <package format="3">
   <name>homing_flight</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="dekchuen@gmail.com">dfordequan</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Homing flight controller for the honeybee-inspired drone navigation stack (PX4 + ROS 2).</description>
+  <maintainer email="d.ou@tudelft.nl">Dequan Ou</maintainer>
+  <license>MIT</license>
 
 
   <depend>px4_msgs</depend>

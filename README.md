@@ -1,11 +1,13 @@
-# Efficient Robot Navigation Inspired by Honeybee Learning Flights
+# Efficient robot navigation inspired by honeybee learning flights
 
 This repository contains all code for the paper:
 
-> **Efficient Robot Navigation Inspired by Honeybee Learning Flights**
-> [Author names — TODO]
-> [Journal/Conference — TODO], 2026
-> DOI: [TODO]
+> **Efficient robot navigation inspired by honeybee learning flights**
+> D. Ou, J. J. Hagenaars, M. Jankowski, M. V. M. Firlefyn, C. De Wagter, F. T. Muijres, J. Degen, G. C. H. E. de Croon
+> *Nature*, 2026.
+> DOI: [10.1038/s41586-026-10461-3](https://www.nature.com/articles/s41586-026-10461-3)
+
+Affiliations: MAVLab, Control and Operations department, Faculty of Aerospace Engineering, Delft University of Technology (TU Delft), the Netherlands; Experimental Zoology Group, Wageningen University, the Netherlands; Navigation Biology Group, Institute of Biology and Environmental Sciences, Carl von Ossietzky University of Oldenburg, Germany.
 
 ## Repository Structure
 
@@ -29,17 +31,18 @@ Each folder contains its own `README.md` with setup instructions. In brief:
 
 ## External Data
 
-- **Isaac Sim 3D assets** (~2.4 GB): Download from [TODO: insert URL] and place in `visual_simulator_docker/isaac-sim_assets/`.
+- **Isaac Sim 3D assets** (~2.4 GB): Download from [SURFdrive](https://surfdrive.surf.nl/s/qardanQkDLwe7m2) and place in `visual_simulator_docker/isaac-sim_assets/`.
 - **Robot training data**: Download from the link in `robot_network_training/README.md`.
 
 ## Citation
 
 ```bibtex
-@article{TODO,
-  title   = {Efficient Robot Navigation Inspired by Honeybee Learning Flights},
-  author  = {TODO},
-  journal = {TODO},
-  year    = {2026}
+@article{ou2026efficient,
+  title   = {Efficient robot navigation inspired by honeybee learning flights},
+  author  = {Ou, D. and Hagenaars, J. J. and Jankowski, M. and Firlefyn, M. V. M. and De Wagter, C. and Muijres, F. T. and Degen, J. and de Croon, G. C. H. E.},
+  journal = {Nature},
+  year    = {2026},
+  doi     = {10.1038/s41586-026-10461-3}
 }
 ```
 

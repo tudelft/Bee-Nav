@@ -1,6 +1,6 @@
-# Insect-Inspired Navigation Framework for Isaac Sim
+# Isaac Sim framework for honeybee-inspired robot navigation
 
-This repository provides a simulation framework built around **Isaac Sim** to facilitate research on insect-inspired navigation techniques for autonomous drones. The framework supports:
+This folder provides the simulation framework built around **Isaac Sim** that accompanies the Nature paper *"Efficient robot navigation inspired by honeybee learning flights"*. The framework supports:
 
 - Rapid dataset generation.
 - Creation of outdoor virtual environments.

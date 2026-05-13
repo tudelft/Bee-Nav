@@ -1,6 +1,6 @@
 # Onboard Robot Code
 
-This repository contains the software stack for the paper *"Insect-Inspired Navigation for Central-Foraging Robots"*, designed to run onboard the robot hardware (Raspberry Pi 4 with PX4 flight controller).
+This folder contains the software stack for the paper *"Efficient robot navigation inspired by honeybee learning flights"*, designed to run onboard the robot hardware (Raspberry Pi 4 with PX4 flight controller).
 
 The system architecture is split into two main components handling distinct responsibilities: high-level flight control and visual navigation inference.
 
