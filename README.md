@@ -3,11 +3,15 @@
 This repository contains all code for the paper:
 
 > **Efficient robot navigation inspired by honeybee learning flights**
-> D. Ou, J. J. Hagenaars, M. Jankowski, M. V. M. Firlefyn, C. De Wagter, F. T. Muijres, J. Degen, G. C. H. E. de Croon
+> D. Ou¹, J. J. Hagenaars¹, M. Jankowski¹, M. V. M. Firlefyn¹, C. De Wagter¹, F. T. Muijres², J. Degen³, G. C. H. E. de Croon¹
 > *Nature*, 2026.
 > DOI: [10.1038/s41586-026-10461-3](https://www.nature.com/articles/s41586-026-10461-3)
 
-Affiliations: MAVLab, Control and Operations department, Faculty of Aerospace Engineering, Delft University of Technology (TU Delft), the Netherlands; Experimental Zoology Group, Wageningen University, the Netherlands; Navigation Biology Group, Institute of Biology and Environmental Sciences, Carl von Ossietzky University of Oldenburg, Germany.
+Affiliations:
+
+1. MAVLab, Control and Operations department, Faculty of Aerospace Engineering, Delft University of Technology (TU Delft), the Netherlands.
+2. Experimental Zoology Group, Wageningen University, the Netherlands.
+3. Navigation Biology Group, Institute of Biology and Environmental Sciences, Carl von Ossietzky University of Oldenburg, Germany.
 
 ## Repository Structure
 
