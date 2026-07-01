@@ -17,7 +17,6 @@ Thumbs.db
 # Generated outputs
 output/
 results/
-models/
 networks/
 training_logs/
 
