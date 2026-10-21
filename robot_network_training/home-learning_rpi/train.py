@@ -255,7 +255,10 @@ class RectilinearProcessor:
 
     def _load_mask(self):
         try:
-            with open("./utils/mask.pkl", "rb") as f:
+            mask_path = os.path.join(self.file_location, "mask.pkl")  # per-dataset mask, if present
+            if not os.path.exists(mask_path):
+                mask_path = "./utils/mask.pkl"
+            with open(mask_path, "rb") as f:
                 mask_file = pickle.load(f)
             return mask_file['mask'], mask_file['x'], mask_file['y'], mask_file['r']
         except:
